@@ -1,81 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Статический сайт «Маляр на Бали» из книги SEO. Выход: docs/ (GitHub Pages)."""
-import json, os, re, shutil, html
-import openpyxl
-from districts import DISTRICTS, GRID, guide
+"""Сайт «Антиплесень · Бали»: удаление плесени (основное) + малярные работы. Выход: docs/ (GitHub Pages)."""
+import json, os, re, shutil, html, urllib.parse
+from districts import DISTRICTS
+from mold_data import SERVICES, PAINT, MOLD_D, GRID, ARTICLES, district_article
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CFG = json.load(open(os.path.join(ROOT, "site_config.json"), encoding="utf-8"))
-BOOK = os.path.join(ROOT, "SEO-малярные-работы-Бали-2026-09-25.xlsx")
 OUT = os.path.join(ROOT, "docs")
 B = CFG["base_path"].rstrip("/")
 E = html.escape
-
-wb = openpyxl.load_workbook(BOOK, read_only=True)
-pages = {r[0]: dict(id=r[0], url=r[1], parent=r[2], type=r[3], h1=r[5], title=r[6], desc=r[8])
-         for r in wb["03 Структура"].iter_rows(min_row=2, values_only=True)}
-sem = list(wb["09 Семантика"].iter_rows(min_row=2, values_only=True))
-QW = ("как ", "чем ", "почему ", "что ", "можно ли ", "сколько ", "какой ", "какая ", "какую ", "нужно ли ", "когда ")
-
-# Тексты услуг: только проверяемое, без цен, сроков-обещаний и выдуманных кейсов
-TXT = {
- "S01": ("Крашу стены и потолки в виллах, квартирах и домах на Бали: от одной комнаты до всего дома. Перед покраской проверяю основание на влагу и плесень — во влажном климате это главная причина, по которой свежая краска пузырится и отслаивается.",
-         ["Осмотр и замер влажности стен", "Защита мебели и пола", "Очистка, обработка антисептиком при необходимости", "Шпаклёвка трещин и шлифовка", "Грунт и два слоя краски", "Уборка после работы"]),
- "S02": ("Покраска фасадов вилл у моря требует другого подхода: соль, солнце и дожди разрушают покрытие быстрее, чем в глубине острова. Подбираю фасадные краски под прибрежные условия и планирую работы на сухой сезон.",
-         ["Осмотр трещин, отслоений и зелёного налёта", "Мойка и биоцидная обработка", "Ремонт трещин эластичными составами", "Грунт и фасадная краска", "Покраска цоколя, парапетов, металлических элементов"]),
- "S03": ("Не всегда нужно перекрашивать всю стену. Подкрашиваю следы после арендаторов, царапины, пятна после протечек и сколы — с подбором цвета, чтобы не было заметных пятен.",
-         ["Подбор и колеровка цвета по образцу", "Локальная подготовка и грунт", "Подкраска с растушёвкой", "Честная рекомендация, если стену лучше перекрасить целиком"]),
- "S04": ("Плесень на Бали — частая проблема: тропическая влажность и сезон дождей. Удаляю плесень со стен, потолков, дерева и швов, нахожу причину и защищаю поверхность, чтобы она не вернулась через месяц.",
-         ["Поиск источника влаги", "Механическая очистка", "Обработка фунгицидом", "Просушка", "Антигрибковый грунт и краска", "Рекомендации по вентиляции"]),
- "S05": ("Антигрибковая обработка — профилактика и обязательный этап перед покраской поражённых поверхностей: стены, потолки, деревянные балки, шкафы, мебель.",
-         ["Выбор состава под поверхность", "Нанесение и выдержка", "Повторная обработка при глубоком поражении", "Финишное покрытие"]),
- "S06": ("Покрываю лаком двери, мебель, столешницы, лестницы, полы и уличное дерево. Во влажном воздухе лак ведёт себя иначе: мутнеет, дольше сохнет, отслаивается при ошибках подготовки — поэтому работаю по погоде и с промежуточной шлифовкой.",
-         ["Снятие старого покрытия", "Шлифовка", "Грунт/порозаполнитель", "Нанесение лака в несколько слоёв", "Промежуточная шлифовка", "Лак для улицы с UV-защитой"]),
- "S07": ("Масло и пропитка — для тика, террас, уличной мебели и дерева, которое должно дышать. Защищают от влаги, солнца и насекомых и легко обновляются без полной шлифовки.",
-         ["Очистка и шлифовка", "Антисептическая пропитка", "Масло или масло-воск в 2–3 слоя", "План обновления покрытия"]),
- "S08": ("Восстанавливаю деревянную мебель и двери: снимаю старое покрытие, убираю плесень и пятна, заделываю дефекты и заново покрываю маслом или лаком.",
-         ["Оценка состояния", "Снятие старого покрытия", "Ремонт сколов и трещин", "Тонировка при необходимости", "Финишное покрытие"]),
- "S09": ("Деревянная терраса у бассейна или сада сереет и темнеет от солнца, воды и плесени. Шлифую, очищаю и покрываю маслом для террас.",
-         ["Мойка и отбеливание дерева", "Шлифовка", "Обработка от плесени", "Масло для террас", "Рекомендации по уходу"]),
- "S10": ("У моря металл ржавеет быстро. Крашу ворота, заборы, перила и решётки с полной подготовкой: удаление ржавчины, антикоррозийный грунт, эмаль.",
-         ["Удаление ржавчины", "Преобразователь и антикоррозийный грунт", "Эмаль в 2 слоя", "Покраска сложных элементов кистью"]),
- "S11": ("Качество покраски определяется подготовкой. Заделываю трещины, ремонтирую штукатурку, шпаклюю и выравниваю стены перед покраской.",
-         ["Расшивка и заделка трещин", "Ремонт отбитой штукатурки", "Шпаклёвка", "Шлифовка", "Грунтование"]),
- "S12": ("Влагозащитные покрытия и гидрофобизация — для стен, которые мокнут в дождь, цоколей, парапетов и камня. Важно: покрытие не заменяет устранение протечки, сначала ищем источник воды.",
-         ["Диагностика источника влаги", "Гидрофобизатор для камня и бетона", "Влагозащитные краски", "Обработка швов и примыканий"]),
-}
-
-IMG = {"S01": "roller", "S02": "facade", "S03": "ladder", "S04": "bali", "S05": "roller", "S06": "varnish",
-       "S07": "wood", "S08": "restore", "S09": "deck", "S10": "ladder", "S11": "hero", "S12": "facade"}
-ALT = {"hero": "Мастер красит наружную стену дома", "facade": "Покраска белого фасада здания", "ladder": "Мастер на стремянке у фасада",
-       "restore": "Мастер работает с деревом", "bali": "Строитель на объекте на Бали", "wood": "Балийский мастер работает с деревом",
-       "roller": "Валик с краской на стене", "varnish": "Покрытие деревянной доски кистью", "villa": "Вилла с бассейном на Бали",
-       "deck": "Деревянная терраса после дождя"}
-D_IMG = {"sanur": "facade", "changu": "villa", "pererenan": "deck", "seminyak": "ladder", "kuta": "hero",
-         "dzhimbaran": "facade", "nusa-dua": "villa", "uluvatu": "roller", "ubud": "wood", "denpasar": "restore"}
-WA_SVG = '<svg class="wa-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.8-.2 1.3z"/></svg>'
-SITE = CFG["site_url"].rstrip("/")
-
-def wa_href():
-    if CFG["whatsapp"]:
-        return "https://wa.me/" + re.sub(r"[^0-9]", "", CFG["whatsapp"])
-    if CFG["telegram"]:
-        return "https://t.me/" + CFG["telegram"].lstrip("@")
-    return f"{B}/kontakty/"
-
-def cta(cls=""):
-    return f'<a class="btn btn-wa {cls}" href="{wa_href()}">{WA_SVG}Написать мастеру</a>'
-
-def img(name, eager=False):
-    load = 'fetchpriority="high"' if eager else 'loading="lazy"'
-    return f'<img src="{B}/img/{name}.webp" alt="{E(ALT[name])}" {load} decoding="async">'
-
-def bali(h):  # страницы услуг: Бали вместо Санура
-    return h.replace("в Сануре", "на Бали").replace("(Бали)", "").strip()
-
-def short(t, n=110):
-    return t if len(t) <= n else t[:n].rsplit(" ", 1)[0] + "…"
-
 CSS = """:root{--bg:#FBF8F3;--surface:#fff;--ink:#1B2B27;--muted:#5B6B66;--line:#E8E2D8;--brand:#1F5E4F;--brand-2:#E9F2EE;--accent:#F2A65A;--accent-2:#FCEBD8;--wa:#25D366;--radius:20px}
 *{box-sizing:border-box}html{scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
@@ -150,27 +83,87 @@ footer{border-top:1px solid var(--line);padding:40px 0 100px;color:var(--muted);
 .photo{aspect-ratio:4/3}.fcols{grid-template-columns:1fr 1fr}
 .mbar{display:flex;position:fixed;left:12px;right:12px;bottom:12px;z-index:50}.mbar .btn{width:100%;justify-content:center}}
 @media (max-width:520px){.steps{grid-template-columns:1fr}body{font-size:16px}.fcols{grid-template-columns:1fr}}"""
+WA_SVG = '<svg class="wa-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6-.4.4c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.4 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.8-.2 1.3z"/></svg>'
+EXTRA_CSS = """
+.promises{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:16px}.promise{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+.promise b{font-family:Fraunces,serif;font-size:1.15rem;display:block;margin-bottom:6px}.promise b::before{content:"✓ ";color:var(--brand)}.promise p{margin:0;color:var(--muted);font-size:.95rem}
+.qf{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;background:var(--accent-2);border-radius:28px;padding:40px}
+.qform{display:grid;gap:14px}.qform label{display:grid;gap:6px;font-weight:600;font-size:.92rem}
+.qform select,.qform input{font:inherit;padding:13px 14px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);width:100%}
+.qform .btn{justify-content:center;border:0;cursor:pointer}
+.prices{width:100%;border-collapse:collapse;background:var(--surface);border-radius:16px;overflow:hidden}.prices td{padding:14px 18px;border-bottom:1px solid var(--line)}
+.dur{display:inline-block;background:var(--accent-2);color:#8a4b1c;border-radius:999px;padding:6px 14px;font-weight:600;font-size:.9rem;margin:0 0 14px}
+.ver{opacity:.6}.dd-panel.one{grid-template-columns:1fr;min-width:260px}
+@media (max-width:900px){.qf{grid-template-columns:1fr;padding:24px}}"""
+
+SITE = CFG["site_url"].rstrip("/")
+IMG_ALT = {"hero": "Мастер обрабатывает наружную стену дома", "facade": "Обработка и покраска белого фасада", "ladder": "Мастер на стремянке у фасада",
+           "restore": "Мастер работает с деревом", "bali": "Мастер на объекте на Бали", "wood": "Балийский мастер работает с деревом",
+           "roller": "Валик с краской на стене", "varnish": "Покрытие дерева кистью", "villa": "Вилла с бассейном на Бали", "deck": "Деревянная терраса после дождя"}
+D_IMG = {"sanur": "facade", "changu": "villa", "pererenan": "deck", "seminyak": "ladder", "kuta": "hero",
+         "dzhimbaran": "facade", "nusa-dua": "villa", "uluvatu": "roller", "ubud": "wood", "denpasar": "restore"}
+SVC = {s["id"]: s for s in SERVICES}
+ALL_SVC = SERVICES + PAINT
+
+def art_url(a):
+    return f"/stati/{a['slug']}/"
+
+def svc_url(s):
+    return f"/uslugi/{s['slug']}/"
+
+def wa_href(text=""):
+    n = re.sub(r"[^0-9]", "", CFG.get("whatsapp") or "")
+    if n:
+        return f"https://wa.me/{n}" + (f"?text={urllib.parse.quote(text)}" if text else "")
+    if CFG.get("telegram"):
+        return "https://t.me/" + CFG["telegram"].lstrip("@")
+    return f"{B}/kontakty/"
+
+def cta(cls="", label="Прислать фото плесени"):
+    return f'<a class="btn btn-wa {cls}" href="{wa_href()}">{WA_SVG}{label}</a>'
+
+def img(name, eager=False):
+    load = 'fetchpriority="high"' if eager else 'loading="lazy"'
+    return f'<img src="{B}/img/{name}.webp" alt="{E(IMG_ALT[name])}" {load} decoding="async">'
+
+def short(t, n=110):
+    return t if len(t) <= n else t[:n].rsplit(" ", 1)[0] + "…"
+
+def cards(items, url, title, text, pic):
+    return '<div class="grid">' + "".join(
+        f'<a class="card" href="{B}{url(x)}">{img(pic(x))}<div class="body"><h3>{E(title(x))}</h3><p>{E(short(text(x)))}</p></div></a>' for x in items) + "</div>"
+
+def svc_cards(items=None):
+    return cards(items or SERVICES, svc_url, lambda s: s["h1"].replace(" на Бали", ""), lambda s: s["intro"], lambda s: s["img"])
+
+def district_cards():
+    return cards(DISTRICTS, lambda d: f"/rayony/{d['slug']}/", lambda d: f"Плесень {d['loc']}", lambda d: MOLD_D[d["slug"]]["walls"], lambda d: D_IMG[d["slug"]])
+
+def grid_url(d, sid):
+    return f"/rayony/{d['slug']}/{SVC[sid]['slug']}/"
 
 def nav_html():
-    svc_links = "".join(f'<a href="{B}{p["url"]}">{E(bali(p["h1"]).replace(" на Бали", ""))}</a>' for p in svcs)
-    svc_links += "".join(f'<a href="{B}/uslugi/{o["slug"]}/">{E(o["h1"].replace(" на Бали", ""))}</a>' for o in OFFERS)
-    d_links = "".join(f'<a href="{B}/rayony/{d["slug"]}/">{E(d["ru"])}</a>' for d in DISTRICTS)
-    desk = (f'<nav class="menu" aria-label="Главное меню"><details class="dd"><summary>Малярные работы</summary><div class="dd-panel">{svc_links}</div></details>'
-            f'<details class="dd"><summary>Районы</summary><div class="dd-panel">{d_links}</div></details>'
-            f'<a href="{B}/ceny/">Цены</a><a href="{B}/stati/">Статьи</a><a href="{B}/kontakty/">Контакты</a></nav>')
-    mob = (f'<details class="burger"><summary aria-label="Открыть меню">☰</summary><div class="mpanel">'
-           f'<a href="{B}/">Главная</a><b>Малярные работы</b>{svc_links}<b>Районы Бали</b>{d_links}'
-           f'<b>Ещё</b><a href="{B}/ceny/">Цены</a><a href="{B}/stati/">Статьи</a><a href="{B}/raboty/">Работы</a><a href="{B}/kontakty/">Контакты</a></div></details>')
+    mold = "".join(f'<a href="{B}{svc_url(s)}">{E(s["h1"].replace(" на Бали", ""))}</a>' for s in SERVICES)
+    paint = "".join(f'<a href="{B}{svc_url(s)}">{E(s["h1"])}</a>' for s in PAINT)
+    dl = "".join(f'<a href="{B}/rayony/{d["slug"]}/">{E(d["ru"])}</a>' for d in DISTRICTS)
+    desk = (f'<nav class="menu" aria-label="Главное меню"><details class="dd"><summary>Плесень</summary><div class="dd-panel">{mold}</div></details>'
+            f'<details class="dd"><summary>Малярные работы</summary><div class="dd-panel one">{paint}</div></details>'
+            f'<details class="dd"><summary>Районы</summary><div class="dd-panel">{dl}</div></details>'
+            f'<a href="{B}/stati/">Статьи</a><a href="{B}/ceny/">Цены</a><a href="{B}/kontakty/">Контакты</a></nav>')
+    mob = (f'<details class="burger"><summary aria-label="Открыть меню">☰</summary><div class="mpanel"><a href="{B}/">Главная</a>'
+           f'<b>Удаление плесени</b>{mold}<b>Малярные работы</b>{paint}<b>Районы Бали</b>{dl}'
+           f'<b>Ещё</b><a href="{B}/stati/">Статьи</a><a href="{B}/ceny/">Цены</a><a href="{B}/kontakty/">Контакты</a></div></details>')
     return desk, mob
 
 def footer_html():
     col = lambda t, items: f'<div><b>{t}</b>' + "".join(f'<a href="{B}{u}">{E(n)}</a>' for n, u in items) + "</div>"
     return (f'<footer><div class="wrap"><div class="fcols">'
-            + col("Малярные работы", [(bali(p["h1"]), p["url"]) for p in svcs])
-            + col("Районы", [(f"Маляр {d['loc']}", f"/rayony/{d['slug']}/") for d in DISTRICTS])
-            + col("Полезное", [("Все районы", "/rayony/"), ("Статьи", "/stati/"), ("Цены", "/ceny/"), ("Работы", "/raboty/"), ("Контакты", "/kontakty/")])
-            + f'</div>{E(CFG["name"])} — малярные работы, удаление плесени и покрытие дерева на Бали.<br>'
-              'Фотографии — иллюстрации (Pexels, Unsplash), не работы мастера. <span class="ver">Версия ' + E(CFG.get("version", "")) + '</span></div></footer>')
+            + col("Удаление плесени", [(s["h1"], svc_url(s)) for s in SERVICES])
+            + col("Районы", [(f"Плесень {d['loc']}", f"/rayony/{d['slug']}/") for d in DISTRICTS])
+            + col("Ещё", [(s["h1"], svc_url(s)) for s in PAINT] + [("Статьи", "/stati/"), ("Цены", "/ceny/"), ("Контакты", "/kontakty/")])
+            + f'</div>{E(CFG["name"])}: удаление плесени, антигрибковая обработка и малярные работы на Бали. '
+              f'Советы по безопасности — по общедоступным рекомендациям EPA и CDC; при симптомах обращайтесь к врачу. '
+              f'Фотографии — иллюстрации (Pexels, Unsplash). <span class="ver">Версия {E(CFG.get("version", ""))}</span></div></footer>')
 
 def crumbs_schema(items):
     return {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
@@ -184,61 +177,8 @@ def faq_block(qa, title="Частые вопросы"):
     return (f'<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>{title}</h2></div>' +
             "".join(f'<details class="faq"><summary>{E(q)}</summary><p>{E(a)}</p></details>' for q, a in qa) + "</div></section>")
 
-def band(title="Пришлите фото — оценю работу", text="Фото поверхности и примерная площадь. Отвечу, что нужно сделать и сколько это стоит."):
+def band(title="Пришлите фото плесени — оценю бесплатно", text="2–3 фото пятен, район и примерная площадь. Отвечу, что это, откуда сырость и что нужно сделать."):
     return f'<section><div class="wrap band"><div><h2>{E(title)}</h2><p>{E(text)}</p></div><div class="cta-row">{cta()}</div></div></section>'
-
-PAGES_META = []  # для sitemap и llms.txt
-
-def page(path, title, desc, body, crumbs=None, schema=None, og=None, kind="page"):
-    canon = SITE + path
-    cr = ""
-    if crumbs:
-        cr = '<nav class="wrap crumbs" aria-label="Хлебные крошки">' + " › ".join(f'<a href="{B}{u}">{E(t)}</a>' if u else E(t) for t, u in crumbs) + "</nav>"
-        schema = (schema or []) + [crumbs_schema([(t, u) for t, u in crumbs])]
-    sch = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>' for x in (schema or []))
-    desk, mob = nav_html()
-    doc = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{E(title)}</title><meta name="description" content="{E(desc)}"><link rel="canonical" href="{canon}">
-<meta property="og:type" content="website"><meta property="og:locale" content="ru_RU"><meta property="og:title" content="{E(title)}"><meta property="og:description" content="{E(desc)}">
-<meta property="og:url" content="{canon}"><meta property="og:image" content="{SITE}/img/{og or 'hero'}.webp"><meta name="theme-color" content="#FBF8F3">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{B}/style.css">{sch}</head><body>
-<header><div class="wrap nav"><a class="logo" href="{B}/">Маляр<span>·</span>Бали</a>{desk}
-<span class="head-cta">{cta("btn-sm")}</span>{mob}</div></header>
-<main>{cr}{body}</main>{footer_html()}
-<div class="mbar">{cta()}</div></body></html>"""
-    d = os.path.join(OUT, path.strip("/"))
-    os.makedirs(d, exist_ok=True)
-    open(os.path.join(d, "index.html"), "w", encoding="utf-8").write(doc)
-    PAGES_META.append((canon, title, desc, kind))
-    return canon
-
-def faq_for(pid, n=5):
-    return [r[2] for r in sem if r[7] == pid and r[3] == "ru" and str(r[2]).startswith(QW) and "санур" not in r[2]][:n]
-
-AREA_SERVED = [{"@type": "Place", "name": f"{d['en']}, Bali, Indonesia"} for d in DISTRICTS]
-biz = {"@context": "https://schema.org", "@type": "HousePainter", "@id": SITE + "/#business", "name": CFG["name"], "url": SITE + "/",
-       "image": SITE + "/img/hero.webp", "description": "Малярные работы на Бали: покраска стен и фасадов, удаление плесени, покрытие дерева лаком и маслом.",
-       "areaServed": AREA_SERVED, "knowsLanguage": ["ru", "en"],
-       "hasOfferCatalog": {"@type": "OfferCatalog", "name": "Малярные работы", "itemListElement": []}}
-if CFG["phone"]:
-    biz["telephone"] = CFG["phone"]
-if CFG["gbp_url"]:
-    biz["sameAs"] = [CFG["gbp_url"]]
-website = {"@context": "https://schema.org", "@type": "WebSite", "name": CFG["name"], "url": SITE + "/", "inLanguage": "ru"}
-
-
-# ---------------- v2.0: блоки доверия, форма, предложения ----------------
-DUR = {"S01": "комната — обычно 1–2 дня", "S02": "фасад виллы — обычно 4–10 дней по погоде", "S03": "подкраска — обычно в пределах дня",
-       "S04": "обработка + просушка — обычно 2–4 дня до покраски", "S05": "обработка — 1 день, плюс выдержка состава", "S06": "дверь или мебель — 2–4 дня с сушкой слоёв",
-       "S07": "терраса или мебель — 1–3 дня", "S08": "предмет мебели — 3–7 дней", "S09": "терраса — 2–4 дня без дождя", "S10": "ворота или перила — 1–3 дня",
-       "S11": "зависит от площади — 1–3 дня до покраски", "S12": "1–3 дня в сухую погоду"}
-
-def rating_badge():
-    if CFG.get("google_rating") and CFG.get("google_reviews"):
-        return f'<li>★ {E(str(CFG["google_rating"]))} в Google · {CFG["google_reviews"]} отзывов</li>'
-    return ""
 
 def promises_block():
     items = list(CFG.get("promises") or [])
@@ -248,65 +188,91 @@ def promises_block():
         items.append(["Быстрый ответ", CFG["response_time"]])
     if not items:
         return ""
-    cards = "".join(f'<div class="promise"><b>{E(t)}</b><p>{E(x)}</p></div>' for t, x in items)
-    return (f'<section><div class="wrap"><div class="sec-head"><h2>Мои обещания</h2><p>Чего чаще всего боятся, когда пускают мастера в дом: '
-            f'доплат, грязи, пропавшего мастера. Вот как я работаю.</p></div><div class="promises">{cards}</div></div></section>')
+    c = "".join(f'<div class="promise"><b>{E(t)}</b><p>{E(x)}</p></div>' for t, x in items)
+    return (f'<section><div class="wrap"><div class="sec-head"><h2>Как я работаю</h2><p>Плесень — не косметика. Поэтому сначала причина, потом обработка, '
+            f'и всё — прозрачно для вас.</p></div><div class="promises">{c}</div></div></section>')
 
 def master_block():
     if not (CFG.get("master_name") and CFG.get("master_story")):
         return ""
-    pic = (f'<div class="photo"><img src="{B}/img/{E(CFG["master_photo"])}" alt="{E(CFG["master_name"])}, маляр на Бали" loading="lazy"></div>'
-           if CFG.get("master_photo") else "")
+    pic = f'<div class="photo"><img src="{B}/img/{E(CFG["master_photo"])}" alt="{E(CFG["master_name"])}" loading="lazy"></div>' if CFG.get("master_photo") else ""
     return (f'<section class="alt-bg"><div class="wrap split">{pic}<div><span class="eyebrow">Кто приедет</span>'
             f'<h2>{E(CFG["master_name"])}</h2><p>{E(CFG["master_story"])}</p></div></div></section>')
+
+def rating_badge():
+    if CFG.get("google_rating") and CFG.get("google_reviews"):
+        return f'<li>★ {E(str(CFG["google_rating"]))} в Google · {CFG["google_reviews"]} отзывов</li>'
+    return ""
 
 def prices_block():
     pr = CFG.get("prices") or []
     if not pr:
         return ""
     rows = "".join(f'<tr><td>{E(x["name"])}</td><td>от {E(x["from"])} {E(x.get("unit", ""))}</td></tr>' for x in pr)
-    return (f'<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Ориентиры цен</h2><p>Точная смета — по фото. Подготовка включена.</p></div>'
+    return (f'<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Ориентиры цен</h2><p>Точная смета — по фото.</p></div>'
             f'<table class="prices">{rows}</table></div></section>')
+
+WHERE = ["Стены и углы", "Потолок", "Ванная: швы, силикон", "Дерево и мебель", "Шкаф и одежда", "Фасад и забор", "Запах, пятен не видно"]
 
 def quick_form():
     d_opts = "".join(f'<option>{E(d["ru"])}</option>' for d in DISTRICTS) + "<option>Другой район</option>"
-    s_opts = "".join(f'<option>{E(bali(p["h1"]).replace(" на Бали", ""))}</option>' for p in svcs)
+    w_opts = "".join(f"<option>{E(w)}</option>" for w in WHERE)
     wa = re.sub(r"[^0-9]", "", CFG.get("whatsapp") or "")
-    return f"""<section id="zayavka"><div class="wrap qf"><div><h2>Оценка по фото</h2>
-<p class="lead">Выберите район и работу — откроется WhatsApp с готовым сообщением. Останется приложить 2–3 фото.</p>
-<ul class="trust"><li>Без выезда</li><li>Бесплатно</li><li>Ни к чему не обязывает</li></ul></div>
+    return f"""<section id="zayavka"><div class="wrap qf"><div><h2>Бесплатная оценка по фото</h2>
+<p class="lead">Выберите район и где плесень — откроется WhatsApp с готовым сообщением. Приложите 2–3 фото.</p>
+<ul class="trust"><li>Без выезда</li><li>Бесплатно</li><li>Скажу, откуда сырость</li></ul></div>
 <form class="qform" onsubmit="return qsend(this)"><label>Район<select name="d">{d_opts}</select></label>
-<label>Что сделать<select name="s">{s_opts}</select></label>
-<label>Комментарий<input name="c" placeholder="например: 2 спальни, плесень на потолке"></label>
+<label>Где плесень<select name="w">{w_opts}</select></label>
+<label>Комментарий<input name="c" placeholder="например: пятна в спальне после дождей"></label>
 <button class="btn btn-wa" type="submit">{WA_SVG}Отправить в WhatsApp</button></form></div></section>
-<script>function qsend(f){{var t="Здравствуйте! Район: "+f.d.value+". Работа: "+f.s.value+". "+f.c.value+" Фото пришлю следом.";
-var n="{wa}";if(n){{location.href="https://wa.me/"+n+"?text="+encodeURIComponent(t)}}else{{location.href="{B}/kontakty/"}}return false}}</script>"""
+<script>function qsend(f){{var t="Здравствуйте! Плесень. Район: "+f.d.value+". Где: "+f.w.value+". "+f.c.value+" Фото пришлю следом.";
+var n="{wa}";location.href=n?"https://wa.me/"+n+"?text="+encodeURIComponent(t):"{B}/kontakty/";return false}}</script>"""
 
-OFFERS = [
- dict(slug="podgotovka-villy-k-zaezdu", h1="Подготовка виллы к заезду гостей на Бали", img="villa",
-      lead="Для владельцев и управляющих: между заездами освежаю стены, подкрашиваю следы, обновляю лак на дверях и мебели, убираю плесень. Цель — вилла выглядит как на фото в объявлении, а простой минимальный.",
-      items=["Осмотр по фото или на месте до выезда гостей", "Список работ с приоритетами: что сделать сейчас, что в следующее окно",
-             "Подкраска стен, дверей, плинтусов", "Удаление пятен плесени и обработка", "Лак и масло на уличной мебели и террасе", "Фотоотчёт для владельца"],
-      faq=[("Успеете между заездами?", "Объём планируем под ваше окно между гостями. Если всё не помещается, делим на этапы."),
-           ("Можно, если я не на Бали?", "Да. Согласование и фотоотчёт в WhatsApp, доступ — через управляющего.")]),
- dict(slug="obsluzhivanie-villy", h1="Обслуживание виллы по графику", img="deck",
-      lead="Во влажном климате проще следить за покрытиями регулярно, чем раз в несколько лет делать большой ремонт. Осмотр по графику, мелкая подкраска, обработка плесени, обновление масла и лака.",
-      items=["Осмотр стен, потолков, дерева и металла", "Подкраска и обработка очагов плесени", "Обновление масла на террасе и уличной мебели",
-             "Проверка ржавчины на воротах и перилах", "Отчёт с фото и планом на следующий визит"],
-      faq=[("Как часто нужен осмотр?", "Зависит от района и дома; у моря и в Убуде чаще. Частоту предложу после первого осмотра."),
-           ("Это дешевле ремонта?", "Обычно да: мелкие дефекты не успевают превратиться в отслоения и гниль.")]),
-]
+PAGES_META = []
 
-GUIDE_HIRE = dict(slug="kak-vybrat-malyara-na-bali", h1="Как выбрать маляра на Бали и не пожалеть",
-    title="Как выбрать маляра на Бали: чек-лист без рисков", desc="Что проверить у мастера на Бали до начала работ: смета, материалы, подготовка, предоплата, сроки, отчёты.",
-    sections=[("Попросите смету письменно", "Объём, материалы, цена и что входит в подготовку. Устная договорённость — главный источник споров и доплат."),
-              ("Уточните, входит ли подготовка", "Очистка, обработка плесени, шпаклёвка трещин и грунт. Без них краска во влажном климате отслаивается быстро."),
-              ("Спросите про материалы", "Какая краска и лак, подходят ли они для влажности и солнца. Хороший мастер называет конкретные продукты."),
-              ("Договоритесь о предоплате", "Разумно платить аванс на материалы с чеками, а работу — по этапам или по завершении."),
-              ("Сроки и погода", "Наружные работы зависят от дождей. Спросите, как мастер планирует дни и что будет, если пойдёт дождь."),
-              ("Отчёты и связь", "Если вы не на месте, договоритесь о фото этапов и о том, кто открывает виллу."),
-              ("Посмотрите реальные работы", "Фото объектов на Бали, отзывы в Google с именами — лучше, чем красивые стоковые картинки."),
-              ("Приёмка", "Осмотрите работу при дневном свете и сбоку: пропуски, потёки, следы на полу и мебели. Замечания — сразу, в WhatsApp с фото.")])
+def page(path, title, desc, body, crumbs=None, schema=None, og=None, kind="page"):
+    canon = SITE + path
+    cr = ""
+    if crumbs:
+        cr = '<nav class="wrap crumbs" aria-label="Хлебные крошки">' + " › ".join(f'<a href="{B}{u}">{E(t)}</a>' if u else E(t) for t, u in crumbs) + "</nav>"
+        schema = (schema or []) + [crumbs_schema(crumbs)]
+    sch = "".join(f'<script type="application/ld+json">{json.dumps(x, ensure_ascii=False)}</script>' for x in (schema or []))
+    desk, mob = nav_html()
+    doc = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{E(title)}</title><meta name="description" content="{E(desc)}"><link rel="canonical" href="{canon}">
+<meta property="og:type" content="website"><meta property="og:locale" content="ru_RU"><meta property="og:title" content="{E(title)}"><meta property="og:description" content="{E(desc)}">
+<meta property="og:url" content="{canon}"><meta property="og:image" content="{SITE}/img/{og or 'bali'}.webp"><meta name="theme-color" content="#FBF8F3">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{B}/style.css">{sch}</head><body>
+<header><div class="wrap nav"><a class="logo" href="{B}/">Антиплесень<span>·</span>Бали</a>{desk}
+<span class="head-cta">{cta("btn-sm", "Оценка по фото")}</span>{mob}</div></header>
+<main>{cr}{body}</main>{footer_html()}
+<div class="mbar">{cta()}</div></body></html>"""
+    d = os.path.join(OUT, path.strip("/"))
+    os.makedirs(d, exist_ok=True)
+    open(os.path.join(d, "index.html"), "w", encoding="utf-8").write(doc)
+    PAGES_META.append((canon, title, desc, kind))
+
+AREA_SERVED = [{"@type": "Place", "name": f"{d['en']}, Bali, Indonesia"} for d in DISTRICTS]
+biz = {"@context": "https://schema.org", "@type": "HomeAndConstructionBusiness", "@id": SITE + "/#business", "name": CFG["name"], "url": SITE + "/",
+       "image": SITE + "/img/bali.webp", "description": "Удаление плесени на Бали: поиск причины сырости, очистка, антигрибковая обработка, защита и покраска.",
+       "areaServed": AREA_SERVED, "knowsLanguage": ["ru", "en"], "knowsAbout": ["удаление плесени", "антигрибковая обработка", "сырость", "малярные работы"],
+       "hasOfferCatalog": {"@type": "OfferCatalog", "name": "Удаление плесени и малярные работы", "itemListElement": [
+           {"@type": "Offer", "itemOffered": {"@type": "Service", "name": s["h1"], "url": SITE + svc_url(s)}} for s in ALL_SVC]}}
+if CFG.get("phone"):
+    biz["telephone"] = CFG["phone"]
+if CFG.get("gbp_url"):
+    biz["sameAs"] = [CFG["gbp_url"]]
+website = {"@context": "https://schema.org", "@type": "WebSite", "name": CFG["name"], "url": SITE + "/", "inLanguage": "ru"}
+
+def svc_schema(name, url, area=None):
+    return {"@context": "https://schema.org", "@type": "Service", "name": name, "serviceType": "Удаление плесени", "areaServed": area or AREA_SERVED,
+            "provider": {"@id": SITE + "/#business"}, "url": SITE + url}
+
+def article_schema(a, url):
+    return {"@context": "https://schema.org", "@type": "Article", "headline": a["h1"], "description": a["desc"], "inLanguage": "ru",
+            "author": {"@id": SITE + "/#business"}, "publisher": {"@id": SITE + "/#business"}, "image": f"{SITE}/img/{a['img']}.webp", "mainEntityOfPage": SITE + url}
 
 # ---------------- генерация ----------------
 if os.path.exists(OUT):
@@ -315,205 +281,158 @@ os.makedirs(os.path.join(OUT, "img"))
 for f in os.listdir(os.path.join(ROOT, "img_src")):
     if f.endswith(".webp"):
         shutil.copy(os.path.join(ROOT, "img_src", f), os.path.join(OUT, "img", f))
-open(os.path.join(OUT, "style.css"), "w", encoding="utf-8").write(CSS)
+open(os.path.join(OUT, "style.css"), "w", encoding="utf-8").write(CSS + EXTRA_CSS)
 open(os.path.join(OUT, ".nojekyll"), "w").write("")
-svcs = [p for p in pages.values() if p["type"] == "услуга"]
-SVC = {p["id"]: p for p in svcs}
-for p in svcs:
-    biz["hasOfferCatalog"]["itemListElement"].append({"@type": "Offer", "itemOffered": {"@type": "Service", "name": bali(p["h1"]), "url": SITE + p["url"]}})
 
-def svc_cards(items=None):
-    return '<div class="grid">' + "".join(
-        f'<a class="card" href="{B}{p["url"]}">{img(IMG[p["id"]])}<div class="body"><h3>{E(bali(p["h1"]).replace(" на Бали", ""))}</h3><p>{E(short(TXT[p["id"]][0]))}</p></div></a>'
-        for p in (items or svcs)) + "</div>"
+for d in DISTRICTS:
+    ARTICLES.append(dict(district_article(d, MOLD_D[d["slug"]]), img=D_IMG[d["slug"]], district=d["slug"]))
+A_MAIN = [a for a in ARTICLES if not a.get("district")]
+A_DIST = [a for a in ARTICLES if a.get("district")]
 
-def district_cards(items=None):
-    return '<div class="grid">' + "".join(
-        f'<a class="card" href="{B}/rayony/{d["slug"]}/">{img(D_IMG[d["slug"]])}<div class="body"><h3>Маляр {E(d["loc"])}</h3><p>{E(short(d["intro"], 105))}</p></div></a>'
-        for d in (items or DISTRICTS)) + "</div>"
+STEPS = [("Фото в WhatsApp", "Пришлите 2–3 фото пятен и район."), ("Причина", "Осмотр и замер влажности: откуда сырость."),
+         ("Смета", "Что делаем, сколько стоит и сколько займёт."), ("Обработка и защита", "Очистка, фунгицид, просушка, покрытие.")]
+HOME_FAQ = [("Как убрать плесень на Бали навсегда?", "Навсегда — только если убрать причину: протечку, конденсат или сырость от грунта, и наладить вентиляцию. Обработка без этого даёт эффект на недели."),
+            ("Можно ли просто закрасить плесень?", "Нет: пятна проступят через краску. Нужны очистка, фунгицид, просушка, антигрибковый грунт и только потом краска."),
+            ("Опасна ли плесень?", "По данным CDC, плесень может вызывать аллергические реакции, кашель и раздражение; сильнее реагируют люди с аллергией и астмой. При симптомах обращайтесь к врачу."),
+            ("Когда можно убрать плесень самому?", "EPA ориентирует на небольшие участки — примерно до 1 м² на гладких поверхностях. Больше, на дереве, в потолках или после затопления — лучше специалист."),
+            ("В каких районах вы работаете?", "Санур, Чангу, Перенан, Семиньяк, Кута, Джимбаран, Нуса Дуа, Улувату, Убуд и Денпасар."),
+            ("Сколько стоит удаление плесени?", "Зависит от площади, материала и глубины поражения и нужна ли покраска. Предварительная оценка — бесплатно по фото.")]
 
-def grid_url(d, sid):
-    return f"/rayony/{d['slug']}/{SVC[sid]['url'].strip('/').split('/')[-1]}/"
-
-STEPS = [("Фото в WhatsApp", "Пришлите фото и примерную площадь."), ("Осмотр", "Приезжаю, смотрю основание и влажность."),
-         ("Смета", "Объём, материалы, сроки — до начала работ."), ("Работа и уборка", "Делаю, убираю, показываю результат.")]
-HOME_FAQ = [("Как найти маляра на Бали?", "Напишите в WhatsApp, пришлите фото поверхности и укажите район. Мастер ответит, что нужно сделать, и договорится об осмотре."),
-            ("В каких районах Бали работает мастер?", "Санур, Чангу, Перенан, Семиньяк, Кута, Джимбаран, Нуса Дуа, Улувату, Убуд и Денпасар."),
-            ("Сколько стоит покраска на Бали?", "Цена зависит от площади, подготовки и материалов. Точную смету мастер даёт после фото или осмотра."),
-            ("Можно ли просто закрасить плесень?", "Нет: плесень проступит через краску. Нужны очистка, обработка фунгицидом, просушка и антигрибковая краска."),
-            ("Когда лучше красить фасад на Бали?", "В сухой сезон, примерно с апреля по октябрь, в дни без дождя.")]
-
-# Главная
-urls = []
-urls.append(page("/", "Маляр на Бали — покраска, удаление плесени, лак для дерева", "Маляр на Бали: покраска стен и фасадов вилл, удаление плесени, покрытие дерева лаком и маслом. Санур, Чангу, Убуд, Семиньяк, Улувату и другие районы.", f"""
+page("/", "Удаление плесени на Бали — поиск причины, обработка, защита", "Удаление плесени на Бали: находим причину сырости, очищаем и обрабатываем стены, потолки, ванные, дерево и мебель. Бесплатная оценка по фото. Санур, Чангу, Убуд и другие районы.", f"""
 <div class="wrap hero"><div>
-<span class="eyebrow">Русскоязычный маляр · 10 районов Бали</span>
-<h1>Маляр на Бали: покраска, плесень, лак для дерева</h1>
-<p class="lead">Аккуратно, по смете и с фотоотчётом. Крашу стены и фасады вилл, убираю плесень, защищаю дерево — с учётом влажности и морского воздуха, чтобы покрытие не облезло через сезон.</p>
+<span class="eyebrow">Русскоязычный мастер · 10 районов Бали</span>
+<h1>Удаление плесени на Бали</h1>
+<p class="lead">Нахожу причину сырости, убираю плесень со стен, потолков, ванных, дерева и мебели и защищаю, чтобы она не вернулась после следующего дождя. Если нужно — крашу после обработки.</p>
 <div class="cta-row">{cta()}<a class="btn btn-ghost" href="#zayavka">Оценка по фото</a></div>
-<ul class="trust">{rating_badge()}<li>Смета до начала работ</li><li>Укрываю и убираю</li><li>Фотоотчёт в WhatsApp</li></ul>
-</div><div class="photo">{img("hero", eager=True)}<div class="chip"><b>Бали</b>Покраска · плесень · дерево</div></div></div>
+<ul class="trust">{rating_badge()}<li>Сначала причина, потом обработка</li><li>Бесплатная оценка по фото</li><li>Фотоотчёт в WhatsApp</li></ul>
+</div><div class="photo">{img("bali", eager=True)}<div class="chip"><b>Бали</b>Плесень · сырость · защита</div></div></div>
 
+<section class="alt-bg"><div class="wrap split"><div><h2>Почему плесень возвращается</h2>
+<p>На Бали плесень почти никогда не бывает «просто пятном». Её кормит влага: протечки, конденсат от кондиционеров, сырость от грунта и закрытые помещения. Если только отмыть или закрасить — через несколько недель всё повторится.</p>
+<ul class="checks"><li>Ищу источник влаги влагомером</li><li>Очищаю и обрабатываю фунгицидом</li><li>Просушиваю до покраски</li><li>Защищаю грунтом, краской или маслом</li></ul></div>
+<div class="photo">{img("ladder")}</div></div></section>
 {promises_block()}{master_block()}
-<section class="alt-bg" id="uslugi"><div class="wrap"><div class="sec-head"><h2>Малярные работы</h2><p>От подкраски одной стены до фасада виллы и террасы у бассейна.</p></div>{svc_cards()}</div></section>
-
-<section id="rayony"><div class="wrap"><div class="sec-head"><h2>Маляр по районам Бали</h2><p>У каждого района свой климат и свои дома: в Убуде больше плесени, на Улувату — солнца, у побережья — соли. Выберите район.</p></div>{district_cards()}</div></section>
-
-<section class="alt-bg"><div class="wrap split"><div class="photo">{img("facade")}</div><div>
-<h2>Почему на Бали покрытия служат меньше</h2>
-<p>Влажность, сезон дождей, солнце и морской воздух разрушают краску, лак и металл быстрее, чем в умеренном климате.</p>
-<ul class="checks"><li>Проверяю влажность стены до покраски</li><li>Обрабатываю плесень, а не закрашиваю её</li><li>Подбираю краски и лаки под тропики</li><li>Планирую фасады на сухой сезон</li></ul>
-</div></div></section>
-
-<section><div class="wrap"><div class="sec-head"><h2>Как проходит работа</h2></div><ol class="steps">{"".join(f"<li><b>{E(a)}</b>{E(b)}</li>" for a, b in STEPS)}</ol></div></section>
-<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Для владельцев и управляющих вилл</h2><p>Когда важны сроки между заездами и контроль издалека.</p></div>
-<div class="grid">{"".join(f'<a class="card" href="{B}/uslugi/{o["slug"]}/">{img(o["img"])}<div class="body"><h3>{E(o["h1"])}</h3><p>{E(short(o["lead"]))}</p></div></a>' for o in OFFERS)}
-<a class="card" href="{B}/stati/{GUIDE_HIRE["slug"]}/">{img("ladder")}<div class="body"><h3>{E(GUIDE_HIRE["h1"])}</h3><p>{E(GUIDE_HIRE["desc"])}</p></div></a></div></div></section>
-{prices_block()}
+<section id="uslugi"><div class="wrap"><div class="sec-head"><h2>Где убираем плесень</h2><p>Выберите, где у вас проблема.</p></div>{svc_cards()}</div></section>
+<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Как проходит работа</h2></div><ol class="steps">{"".join(f"<li><b>{E(a)}</b>{E(b)}</li>" for a, b in STEPS)}</ol></div></section>
+<section id="rayony"><div class="wrap"><div class="sec-head"><h2>Плесень по районам Бали</h2><p>В Убуде сырее всего, у побережья добавляется соль, в новых виллах Чангу — непросохшие стены. Выберите район.</p></div>{district_cards()}</div></section>
 {quick_form()}
-
-<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Статьи по районам</h2><p>Что учитывать при покраске и уходе за домом в разных частях острова.</p></div>
-<ul class="pills">{"".join(f'<li><a href="{B}/stati/{guide(d)["slug"]}/">{E(d["ru"])}</a></li>' for d in DISTRICTS)}</ul></div></section>
+<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Полезно знать</h2></div>
+{cards(A_MAIN[:6], art_url, lambda a: a["h1"], lambda a: a["short"], lambda a: a["img"])}
+<p style="margin-top:18px"><a href="{B}/stati/">Все статьи о плесени →</a></p></div></section>
+<section><div class="wrap"><div class="sec-head"><h2>Малярные работы</h2><p>После обработки или отдельно — покраска и защита дерева с учётом влажности.</p></div>
+{cards(PAINT, svc_url, lambda s: s["h1"], lambda s: s["intro"], lambda s: s["img"])}</div></section>
+{prices_block()}
 {faq_block(HOME_FAQ)}
 {band()}
-""", schema=[biz, website, faq_schema(HOME_FAQ)], kind="home"))
+""", schema=[biz, website, faq_schema(HOME_FAQ)], kind="home")
 
-# Хабы
-urls.append(page("/uslugi/", "Малярные работы на Бали — все услуги", "Все малярные работы на Бали: покраска стен и фасадов, плесень, лак и масло для дерева, металл, подготовка стен.",
-                 f'<section><div class="wrap"><div class="sec-head"><h1>Малярные работы на Бали</h1><p class="lead">Выберите работу — на странице этапы, материалы, частые вопросы и районы.</p></div>{svc_cards()}</div></section>',
-                 crumbs=[("Главная", "/"), ("Малярные работы", "")], kind="hub"))
-urls.append(page("/rayony/", "Маляр по районам Бали — Санур, Чангу, Убуд и другие", "Маляр в 10 районах Бали: Санур, Чангу, Перенан, Семиньяк, Кута, Джимбаран, Нуса Дуа, Улувату, Убуд, Денпасар.",
-                 f'<section><div class="wrap"><div class="sec-head"><h1>Маляр по районам Бали</h1><p class="lead">Климат и дома в районах разные — от этого зависят подготовка, материалы и сроки.</p></div>{district_cards()}</div></section>',
-                 crumbs=[("Главная", "/"), ("Районы", "")], kind="hub"))
+page("/uslugi/", "Удаление плесени на Бали — все услуги", "Все услуги: плесень на стенах, в ванной, на дереве, в шкафах, на фасаде, поиск причины сырости, обработка, покраска.",
+     f'<section><div class="wrap"><div class="sec-head"><h1>Удаление плесени на Бали: услуги</h1><p class="lead">Выберите, где плесень.</p></div>{svc_cards()}'
+     f'<div class="sec-head" style="margin-top:40px"><h2>Малярные работы</h2></div>{cards(PAINT, svc_url, lambda s: s["h1"], lambda s: s["intro"], lambda s: s["img"])}</div></section>',
+     crumbs=[("Главная", "/"), ("Услуги", "")], kind="hub")
 
-# Страницы услуг (Бали)
-for p in svcs:
-    intro, steps = TXT[p["id"]]
-    h1 = bali(p["h1"])
-    qa = [(q[0].upper() + q[1:] + "?", "Зависит от состояния поверхности и материала. Пришлите фото — мастер подскажет, что нужно в вашем случае.") for q in faq_for(p["id"])]
-    cat = dict(GRID).get(p["id"])
-    d_links = "".join(f'<li><a href="{B}{grid_url(d, p["id"]) if cat else "/rayony/" + d["slug"] + "/"}">{E(d["ru"])}</a></li>' for d in DISTRICTS)
-    svc_schema = {"@context": "https://schema.org", "@type": "Service", "name": h1, "serviceType": h1, "areaServed": AREA_SERVED,
-                  "provider": {"@id": SITE + "/#business"}, "url": SITE + p["url"]}
-    others = [o for o in svcs if o["id"] != p["id"]][:3]
-    urls.append(page(p["url"], f"{h1} — мастер, расчёт по фото", p["desc"].replace("в Сануре", "на Бали"), f"""
-<div class="wrap page-hero"><div><span class="eyebrow">Бали · расчёт по фото</span><h1>{E(h1)}</h1><span class="dur">Срок: {E(DUR[p["id"]])}</span><p class="lead">{E(intro)}</p>
-<div class="cta-row">{cta()}</div></div><div class="photo">{img(IMG[p["id"]], eager=True)}</div></div>
-<section><div class="wrap split"><div><h2>Что входит в работу</h2><ol class="steps one">{"".join(f"<li>{E(s)}</li>" for s in steps)}</ol></div>
-<div><h2>Стоимость</h2><p>Цена зависит от площади, состояния поверхности и материалов. Точную смету мастер даёт после фото или осмотра.</p>
-<ul class="checks"><li>Смета до начала работ</li><li>Материалы под влажный климат</li><li>Уборка после работы</li></ul></div></div></section>
-<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>{E(h1.replace(" на Бали", ""))} по районам</h2></div><ul class="pills">{d_links}</ul></div></section>
-{faq_block(qa) if qa else ""}
-{band("Нужна оценка?", "Пришлите фото поверхности, район и примерную площадь.")}
-<section><div class="wrap"><div class="sec-head"><h2>Другие малярные работы</h2></div>{svc_cards(others)}</div></section>
-""", crumbs=[("Главная", "/"), ("Малярные работы", "/uslugi/"), (h1, "")], schema=[svc_schema] + ([faq_schema(qa)] if qa else []), og=IMG[p["id"]], kind="service"))
+rel_art = {"M01": "pochemu-na-bali-plesen", "M02": "mozhno-li-zakrasit-plesen", "M03": "plesen-v-vannoy", "M04": "plesen-na-mebeli-iz-tika",
+           "M05": "plesen-v-shkafu", "M06": "plesen-posle-sezona-dozhdey", "M07": "pochemu-na-bali-plesen", "M08": "plesen-posle-sezona-dozhdey",
+           "M09": "zapah-syrosti-v-dome", "M10": "mozhno-li-zakrasit-plesen", "M11": "zapah-syrosti-v-dome", "M12": "plesen-v-arendovannoy-ville"}
+AMAP = {a["slug"]: a for a in ARTICLES}
+for s in ALL_SVC:
+    is_mold = s["id"].startswith("M")
+    grid = dict(GRID).get(s["id"])
+    d_links = "".join(f'<li><a href="{B}{grid_url(d, s["id"]) if grid else "/rayony/" + d["slug"] + "/"}">{E(d["ru"])}</a></li>' for d in DISTRICTS)
+    art = AMAP.get(rel_art.get(s["id"], ""))
+    others = [o for o in SERVICES if o["id"] != s["id"]][:3]
+    faq = s.get("faq", [])
+    page(svc_url(s), f"{s['h1']}{'' if 'Бали' in s['h1'] else ' на Бали'} — мастер, оценка по фото", short(s["intro"], 155), f"""
+<div class="wrap page-hero"><div><span class="eyebrow">Бали · оценка по фото</span><h1>{E(s["h1"])}</h1><span class="dur">Срок: {E(s["dur"])}</span>
+<p class="lead">{E(s["intro"])}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(s["img"], eager=True)}</div></div>
+<section><div class="wrap split"><div><h2>Этапы работы</h2><ol class="steps one">{"".join(f"<li>{E(x)}</li>" for x in s["steps"])}</ol></div>
+<div><h2>Стоимость</h2><p>Зависит от площади, материала и глубины поражения, нужна ли покраска и есть ли доступ. Предварительная оценка — бесплатно по фото.</p>
+{f'<p><a href="{B}/stati/{art["slug"]}/">Читать: {E(art["h1"])}</a></p>' if art else ""}
+<h2 style="margin-top:28px">По районам</h2><ul class="pills">{d_links}</ul></div></div></section>
+{faq_block(faq) if faq else ""}
+{quick_form() if is_mold else band("Нужна оценка?", "Пришлите фото и район.")}
+<section><div class="wrap"><div class="sec-head"><h2>Другие работы с плесенью</h2></div>{svc_cards(others)}</div></section>
+""", crumbs=[("Главная", "/"), ("Услуги", "/uslugi/"), (s["h1"], "")], schema=[svc_schema(s["h1"], svc_url(s))] + ([faq_schema(faq)] if faq else []), og=s["img"], kind="service")
 
-# Районы, сетка, гайды
+page("/rayony/", "Удаление плесени по районам Бали", "Плесень в Сануре, Чангу, Перенане, Семиньяке, Куте, Джимбаране, Нуса Дуа, Улувату, Убуде и Денпасаре: особенности и услуги.",
+     f'<section><div class="wrap"><div class="sec-head"><h1>Плесень по районам Бали</h1><p class="lead">Климат и дома разные — разные и причины сырости.</p></div>{district_cards()}</div></section>',
+     crumbs=[("Главная", "/"), ("Районы", "")], kind="hub")
+
 for i, d in enumerate(DISTRICTS):
+    n = MOLD_D[d["slug"]]
     near = [DISTRICTS[(i + k) % len(DISTRICTS)] for k in (1, 2, 3)]
-    g = guide(d)
-    d_schema = {"@context": "https://schema.org", "@type": "Service", "name": f"Малярные работы {d['loc']}", "serviceType": "Малярные работы",
-                "areaServed": {"@type": "Place", "name": f"{d['en']}, Bali, Indonesia"}, "provider": {"@id": SITE + "/#business"}, "url": f"{SITE}/rayony/{d['slug']}/"}
-    grid_cards = '<div class="grid">' + "".join(
-        f'<a class="card" href="{B}{grid_url(d, sid)}">{img(IMG[sid])}<div class="body"><h3>{E(bali(SVC[sid]["h1"]).replace(" на Бали", ""))} {E(d["loc"])}</h3><p>{E(short(d["notes"][cat], 100))}</p></div></a>'
-        for sid, cat in GRID) + "</div>"
-    urls.append(page(f"/rayony/{d['slug']}/", f"Маляр {d['loc']} — покраска, плесень, лак для дерева", f"Маляр {d['loc']}: покраска стен и фасадов, удаление плесени, лак и масло для дерева с учётом климата {d['gen']}.", f"""
-<div class="wrap page-hero"><div><span class="eyebrow">{E(d["ru"])} · Бали</span><h1>Маляр {E(d["loc"])}</h1>
-<div class="answer">Малярные работы {E(d["loc"])}: покраска стен и фасадов, удаление плесени, лак и масло для дерева. Пришлите фото и адрес — мастер оценит объём.</div>
-<p class="lead">{E(d["intro"])}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(D_IMG[d["slug"]], eager=True)}</div></div>
-<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Работы {E(d["loc"])}</h2><p>С учётом местного климата и типичных домов: {E(d["houses"])}.</p></div>{grid_cards}</div></section>
-<section><div class="wrap split"><div><h2>Что разрушает покрытия {E(d["loc"])}</h2><ul class="checks">{"".join(f"<li>{E(r[0].upper() + r[1:])}</li>" for r in d["risks"])}</ul>
-<p style="margin-top:18px"><a href="{B}/stati/{g["slug"]}/">Подробно: {E(g["h1"])}</a></p></div>
-<div><h2>Другие работы</h2><ul class="pills">{"".join(f'<li><a href="{B}{p["url"]}">{E(bali(p["h1"]).replace(" на Бали", ""))}</a></li>' for p in svcs if p["id"] not in dict(GRID))}</ul></div></div></section>
-{faq_block(d["faq"])}
-<section><div class="wrap"><div class="sec-head"><h2>Соседние районы</h2></div><ul class="pills">{"".join(f'<li><a href="{B}/rayony/{n["slug"]}/">Маляр {E(n["loc"])}</a></li>' for n in near)}<li><a href="{B}/rayony/">Все районы</a></li></ul></div></section>
-{band()}
-""", crumbs=[("Главная", "/"), ("Районы", "/rayony/"), (d["ru"], "")], schema=[d_schema, faq_schema(d["faq"])], og=D_IMG[d["slug"]], kind="district"))
-
-    for sid, cat in GRID:
-        s = SVC[sid]
-        name = bali(s["h1"]).replace(" на Бали", "")
-        h1 = f"{name} {d['loc']}"
-        intro, steps = TXT[sid]
-        qa = [(f"Выполняете {name.lower()} {d['loc']}?", f"Да, {d['ru']} — один из районов выезда. Пришлите фото и адрес для оценки."),
-              (f"Что важно учесть {d['loc']}?", d["notes"][cat])]
-        others = [(sid2, c2) for sid2, c2 in GRID if sid2 != sid]
-        g_schema = {"@context": "https://schema.org", "@type": "Service", "name": h1, "serviceType": name,
-                    "areaServed": {"@type": "Place", "name": f"{d['en']}, Bali, Indonesia"}, "provider": {"@id": SITE + "/#business"}, "url": SITE + grid_url(d, sid)}
-        urls.append(page(grid_url(d, sid), f"{h1} — мастер, расчёт по фото", f"{h1}: {short(d['notes'][cat], 120)}", f"""
-<div class="wrap page-hero"><div><span class="eyebrow">{E(d["ru"])} · {E(name)}</span><h1>{E(h1)}</h1>
-<div class="answer">{E(d["notes"][cat])}</div><p class="lead">{E(intro)}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(IMG[sid], eager=True)}</div></div>
-<section><div class="wrap split"><div><h2>Этапы работы</h2><ol class="steps one">{"".join(f"<li>{E(x)}</li>" for x in steps)}</ol></div>
-<div><h2>Особенности района</h2><p>{E(d["intro"])}</p><ul class="checks">{"".join(f"<li>{E(r[0].upper() + r[1:])}</li>" for r in d["risks"][:3])}</ul></div></div></section>
+    area = {"@type": "Place", "name": f"{d['en']}, Bali, Indonesia"}
+    art = next(a for a in A_DIST if a["district"] == d["slug"])
+    qa = [(f"Убираете плесень {d['loc']}?", f"Да, {d['ru']} — один из районов выезда. Пришлите фото и адрес для бесплатной оценки."),
+          (f"Почему {d['loc']} появляется плесень?", d["notes"]["mold"])] + d["faq"][1:]
+    gcards = '<div class="grid">' + "".join(
+        f'<a class="card" href="{B}{grid_url(d, sid)}">{img(SVC[sid]["img"])}<div class="body"><h3>{E(SVC[sid]["h1"].split(":")[0])} {E(d["loc"])}</h3><p>{E(short(n[k], 105))}</p></div></a>'
+        for sid, k in GRID) + "</div>"
+    page(f"/rayony/{d['slug']}/", f"Удаление плесени {d['loc']} — причина, обработка, защита", f"Удаление плесени {d['loc']}: {short(d['notes']['mold'], 120)} Бесплатная оценка по фото.", f"""
+<div class="wrap page-hero"><div><span class="eyebrow">{E(d["ru"])} · Бали</span><h1>Удаление плесени {E(d["loc"])}</h1>
+<div class="answer">{E(d["notes"]["mold"])}</div><p class="lead">{E(d["intro"])}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(D_IMG[d["slug"]], eager=True)}</div></div>
+<section class="alt-bg"><div class="wrap"><div class="sec-head"><h2>Где чаще всего плесень {E(d["loc"])}</h2></div>{gcards}</div></section>
+<section><div class="wrap split"><div><h2>Что усиливает сырость {E(d["loc"])}</h2><ul class="checks">{"".join(f"<li>{E(r[0].upper() + r[1:])}</li>" for r in d["risks"])}</ul>
+<p style="margin-top:18px"><a href="{B}/stati/{art["slug"]}/">Подробно: {E(art["h1"])}</a></p></div>
+<div><h2>Другие услуги</h2><ul class="pills">{"".join(f'<li><a href="{B}{svc_url(s)}">{E(s["h1"].replace(" на Бали", ""))}</a></li>' for s in SERVICES if s["id"] not in dict(GRID))}</ul></div></div></section>
 {faq_block(qa)}
-<section><div class="wrap split"><div><h2>Другие работы {E(d["loc"])}</h2><ul class="pills">{"".join(f'<li><a href="{B}{grid_url(d, s2)}">{E(bali(SVC[s2]["h1"]).replace(" на Бали", ""))}</a></li>' for s2, _ in others)}<li><a href="{B}/rayony/{d["slug"]}/">Все работы {E(d["loc"])}</a></li></ul></div>
-<div><h2>{E(name)} в других районах</h2><ul class="pills">{"".join(f'<li><a href="{B}{grid_url(n, sid)}">{E(n["ru"])}</a></li>' for n in near)}<li><a href="{B}{s["url"]}">Вся информация об услуге</a></li></ul></div></div></section>
+<section><div class="wrap"><div class="sec-head"><h2>Соседние районы</h2></div><ul class="pills">{"".join(f'<li><a href="{B}/rayony/{x["slug"]}/">Плесень {E(x["loc"])}</a></li>' for x in near)}<li><a href="{B}/rayony/">Все районы</a></li></ul></div></section>
+{quick_form()}
+""", crumbs=[("Главная", "/"), ("Районы", "/rayony/"), (d["ru"], "")], schema=[svc_schema(f"Удаление плесени {d['loc']}", f"/rayony/{d['slug']}/", area), faq_schema(qa)], og=D_IMG[d["slug"]], kind="district")
+
+    for sid, k in GRID:
+        s = SVC[sid]
+        name = s["h1"].split(":")[0]
+        h1 = f"{name} {d['loc']}"
+        qa2 = [(f"Убираете {name.lower()} {d['loc']}?", f"Да. Пришлите фото — оценю бесплатно и скажу, что нужно сделать."), (f"Что важно {d['loc']}?", n[k])] + s["faq"][:1]
+        page(grid_url(d, sid), f"{h1} — удаление и защита", f"{h1}: {short(n[k], 120)}", f"""
+<div class="wrap page-hero"><div><span class="eyebrow">{E(d["ru"])} · {E(name)}</span><h1>{E(h1)}</h1>
+<div class="answer">{E(n[k])}</div><p class="lead">{E(s["intro"])}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(s["img"], eager=True)}</div></div>
+<section><div class="wrap split"><div><h2>Этапы</h2><ol class="steps one">{"".join(f"<li>{E(x)}</li>" for x in s["steps"])}</ol></div>
+<div><h2>Особенности района</h2><p>{E(d["notes"]["mold"])}</p><ul class="checks">{"".join(f"<li>{E(r[0].upper() + r[1:])}</li>" for r in d["risks"][:3])}</ul></div></div></section>
+{faq_block(qa2)}
+<section><div class="wrap split"><div><h2>Ещё {E(d["loc"])}</h2><ul class="pills">{"".join(f'<li><a href="{B}{grid_url(d, s2)}">{E(SVC[s2]["h1"].split(":")[0])}</a></li>' for s2, _ in GRID if s2 != sid)}<li><a href="{B}/rayony/{d["slug"]}/">Плесень {E(d["loc"])}</a></li></ul></div>
+<div><h2>{E(name)} в других районах</h2><ul class="pills">{"".join(f'<li><a href="{B}{grid_url(x, sid)}">{E(x["ru"])}</a></li>' for x in near)}<li><a href="{B}{svc_url(s)}">Об услуге</a></li></ul></div></div></section>
 {band()}
-""", crumbs=[("Главная", "/"), ("Районы", "/rayony/"), (d["ru"], f"/rayony/{d['slug']}/"), (name, "")], schema=[g_schema, faq_schema(qa)], og=IMG[sid], kind="grid"))
+""", crumbs=[("Главная", "/"), ("Районы", "/rayony/"), (d["ru"], f"/rayony/{d['slug']}/"), (name, "")], schema=[svc_schema(h1, grid_url(d, sid), area), faq_schema(qa2)], og=s["img"], kind="grid")
 
-    art_schema = {"@context": "https://schema.org", "@type": "Article", "headline": g["h1"], "description": g["desc"], "inLanguage": "ru",
-                  "about": {"@type": "Place", "name": f"{d['en']}, Bali"}, "author": {"@id": SITE + "/#business"}, "publisher": {"@id": SITE + "/#business"},
-                  "image": f"{SITE}/img/{D_IMG[d['slug']]}.webp", "mainEntityOfPage": f"{SITE}/stati/{g['slug']}/"}
-    toc = "".join(f'<li><a href="#s{j}">{E(t)}</a></li>' for j, (t, _) in enumerate(g["sections"]))
-    body = "".join(f'<h2 id="s{j}">{E(t)}</h2><p>{E(x)}</p>' for j, (t, x) in enumerate(g["sections"]))
-    urls.append(page(f"/stati/{g['slug']}/", g["title"], g["desc"], f"""
-<article class="wrap prose"><h1>{E(g["h1"])}</h1>
-<div class="answer"><b>Коротко:</b> {E(d["intro"])} Главные риски: {E(", ".join(d["risks"][:3]))}.</div>
+for a in ARTICLES:
+    url = f"/stati/{a['slug']}/"
+    toc = "".join(f'<li><a href="#s{j}">{E(t)}</a></li>' for j, (t, _) in enumerate(a["sections"]))
+    body = "".join(f'<h2 id="s{j}">{E(t)}</h2><p>{E(x)}</p>' for j, (t, x) in enumerate(a["sections"]))
+    more = [x for x in A_MAIN if x["slug"] != a["slug"]][:4]
+    page(url, a["h1"] + " — Антиплесень Бали", a["desc"], f"""
+<article class="wrap prose"><h1>{E(a["h1"])}</h1><div class="answer"><b>Коротко:</b> {E(a["short"])}</div>
 <div class="toc"><b>Содержание</b><ol>{toc}</ol></div>{body}
-<h2>Работы {E(d["loc"])}</h2><ul class="pills">{"".join(f'<li><a href="{B}{grid_url(d, s2)}">{E(bali(SVC[s2]["h1"]).replace(" на Бали", ""))}</a></li>' for s2, _ in GRID)}<li><a href="{B}/rayony/{d["slug"]}/">Маляр {E(d["loc"])}</a></li></ul>
-</article>{band()}
-""", crumbs=[("Главная", "/"), ("Статьи", "/stati/"), (d["ru"], "")], schema=[art_schema], og=D_IMG[d["slug"]], kind="article"))
+<h2>Читайте также</h2><ul class="pills">{"".join(f'<li><a href="{B}/stati/{x["slug"]}/">{E(x["h1"])}</a></li>' for x in more)}</ul>
+</article>{quick_form()}
+""", crumbs=[("Главная", "/"), ("Статьи", "/stati/"), (short(a["h1"], 40), "")], schema=[article_schema(a, url)], og=a["img"], kind="article")
 
-for o in OFFERS:
-    o_schema = {"@context": "https://schema.org", "@type": "Service", "name": o["h1"], "areaServed": AREA_SERVED, "provider": {"@id": SITE + "/#business"}, "url": f"{SITE}/uslugi/{o['slug']}/"}
-    urls.append(page(f"/uslugi/{o['slug']}/", o["h1"] + " — маляр", short(o["lead"], 150), f"""
-<div class="wrap page-hero"><div><span class="eyebrow">Для владельцев и управляющих</span><h1>{E(o["h1"])}</h1><p class="lead">{E(o["lead"])}</p>
-<div class="cta-row">{cta()}</div></div><div class="photo">{img(o["img"], eager=True)}</div></div>
-<section><div class="wrap split"><div><h2>Что входит</h2><ul class="checks">{"".join(f"<li>{E(x)}</li>" for x in o["items"])}</ul></div>
-<div><h2>Районы</h2><ul class="pills">{"".join(f'<li><a href="{B}/rayony/{d["slug"]}/">{E(d["ru"])}</a></li>' for d in DISTRICTS)}</ul></div></div></section>
-{promises_block()}{faq_block(o["faq"])}{quick_form()}
-""", crumbs=[("Главная", "/"), ("Малярные работы", "/uslugi/"), (o["h1"], "")], schema=[o_schema, faq_schema(o["faq"])], og=o["img"], kind="service"))
+page("/stati/", "Статьи о плесени на Бали", "Почему на Бали плесень, чем её убрать, что делать с ванной, мебелью, шкафом и запахом сырости. Гайды по районам.",
+     f'<section><div class="wrap"><div class="sec-head"><h1>Статьи о плесени на Бали</h1></div>'
+     f'{cards(A_MAIN, art_url, lambda a: a["h1"], lambda a: a["short"], lambda a: a["img"])}'
+     f'<div class="sec-head" style="margin-top:40px"><h2>Плесень по районам</h2></div>'
+     f'{cards(A_DIST, art_url, lambda a: a["h1"], lambda a: a["desc"], lambda a: a["img"])}</div></section>',
+     crumbs=[("Главная", "/"), ("Статьи", "")], kind="hub")
 
-gh = GUIDE_HIRE
-gh_schema = {"@context": "https://schema.org", "@type": "Article", "headline": gh["h1"], "description": gh["desc"], "inLanguage": "ru",
-             "author": {"@id": SITE + "/#business"}, "publisher": {"@id": SITE + "/#business"}, "image": SITE + "/img/ladder.webp", "mainEntityOfPage": f"{SITE}/stati/{gh['slug']}/"}
-urls.append(page(f"/stati/{gh['slug']}/", gh["title"], gh["desc"], f"""
-<article class="wrap prose"><h1>{E(gh["h1"])}</h1>
-<div class="answer"><b>Коротко:</b> письменная смета, подготовка в цене, понятные материалы, аванс только на материалы, фото этапов и приёмка при дневном свете.</div>
-<div class="toc"><b>Чек-лист</b><ol>{"".join(f'<li><a href="#h{j}">{E(t)}</a></li>' for j, (t, _) in enumerate(gh["sections"]))}</ol></div>
-{"".join(f'<h2 id="h{j}">{E(t)}</h2><p>{E(x)}</p>' for j, (t, x) in enumerate(gh["sections"]))}
-</article>{promises_block()}{quick_form()}
-""", crumbs=[("Главная", "/"), ("Статьи", "/stati/"), ("Как выбрать маляра", "")], schema=[gh_schema], og="ladder", kind="article"))
-
-urls.append(page("/stati/", "Статьи о покраске и уходе за домом на Бали", "Гайды по районам Бали: климат, типичные дома, что разрушает краску и дерево, когда планировать работы.",
-                 f'<section><div class="wrap"><div class="sec-head"><h1>Статьи о покраске на Бали</h1><p class="lead">Гайды по районам: климат, дома и типичные проблемы покрытий.</p></div><div class="grid">' + f'<a class="card" href="{B}/stati/{GUIDE_HIRE["slug"]}/">{img("ladder")}<div class="body"><h3>{E(GUIDE_HIRE["h1"])}</h3><p>{E(GUIDE_HIRE["desc"])}</p></div></a>' +
-                 "".join(f'<a class="card" href="{B}/stati/{guide(d)["slug"]}/">{img(D_IMG[d["slug"]])}<div class="body"><h3>{E(guide(d)["h1"])}</h3><p>{E(guide(d)["desc"])}</p></div></a>' for d in DISTRICTS) +
-                 "</div></div></section>", crumbs=[("Главная", "/"), ("Статьи", "")], kind="hub"))
-
-for pid, h1, title, desc, body, pic in [
-        ("P090", "Цены на малярные работы на Бали", "Цены на покраску, обработку от плесени и лакировку — Бали", "Из чего складывается цена малярных работ на Бали. Точная смета — по фото и осмотру.",
-         "Цена складывается из площади, подготовки (очистка, обработка от плесени, шпаклёвка), материалов и доступа (высота, леса). Пришлите фото и район — пришлю расчёт.", "roller"),
-        ("P091", "Примеры работ", "Примеры малярных работ на Бали — до и после", "Фото объектов на Бали: покраска, плесень, дерево.",
-         "Здесь появятся фотографии реальных объектов: до и после.", "villa"),
-        ("P092", "Контакты мастера", "Контакты — маляр на Бали", "Связаться с маляром на Бали: WhatsApp, Telegram. Районы выезда.",
-         "Работаю в 10 районах Бали. Напишите, пришлите фото и укажите район — отвечу и договоримся об осмотре.", "bali")]:
-    p = pages[pid]
-    urls.append(page(p["url"], title, desc,
-                     f'<div class="wrap page-hero"><div><h1>{E(h1)}</h1><p class="lead">{E(body)}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(pic, eager=True)}</div></div>',
-                     crumbs=[("Главная", "/"), (h1, "")], og=pic))
-
-# llms.txt — карта сайта для ИИ-ассистентов
-L = [f"# {CFG['name']}", "", "> Маляр на Бали: покраска стен и фасадов вилл, удаление плесени, покрытие дерева лаком и маслом. "
-     "Районы: " + ", ".join(d["ru"] for d in DISTRICTS) + ". Язык: русский, английский. Расчёт по фото.", ""]
-for kind, head in [("home", "Главная"), ("service", "Малярные работы"), ("district", "Районы"), ("grid", "Работы по районам"), ("article", "Статьи"), ("hub", "Разделы"), ("page", "Прочее")]:
-    items = [m for m in PAGES_META if m[3] == kind]
-    if items:
-        L += [f"## {head}", ""] + [f"- [{t}]({u}): {d}" for u, t, d, _ in items] + [""]
-open(os.path.join(OUT, "llms.txt"), "w", encoding="utf-8").write("\n".join(L))
+for path, h1, title, desc, text, pic in [
+        ("/ceny/", "Цены на удаление плесени на Бали", "Цены на удаление плесени и антигрибковую обработку — Бали", "Из чего складывается цена удаления плесени. Бесплатная оценка по фото.",
+         "Цена зависит от площади, материала (стена, плитка, дерево), глубины поражения, нужна ли покраска и доступа. Пришлите фото и район — пришлю оценку.", "roller"),
+        ("/kontakty/", "Контакты", "Контакты — удаление плесени на Бали", "Связаться: WhatsApp, Telegram. 10 районов Бали.",
+         "Пришлите 2–3 фото плесени и район — отвечу, что это, откуда сырость и что делать.", "bali")]:
+    page(path, title, desc, f'<div class="wrap page-hero"><div><h1>{E(h1)}</h1><p class="lead">{E(text)}</p><div class="cta-row">{cta()}</div></div><div class="photo">{img(pic, eager=True)}</div></div>'
+         + (prices_block() if path == "/ceny/" else quick_form()), crumbs=[("Главная", "/"), (h1, "")], og=pic)
 
 open(os.path.join(OUT, "sitemap.xml"), "w", encoding="utf-8").write(
     '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
-    "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>")
-open(os.path.join(OUT, "robots.txt"), "w").write(f"User-agent: *\nAllow: /\nSitemap: {CFG['site_url']}/sitemap.xml\n")
+    "".join(f"<url><loc>{m[0]}</loc></url>" for m in PAGES_META) + "</urlset>")
+open(os.path.join(OUT, "robots.txt"), "w").write(f"User-agent: *\nAllow: /\nSitemap: {SITE}/sitemap.xml\n")
 open(os.path.join(OUT, "404.html"), "w", encoding="utf-8").write(f'<!doctype html><meta charset="utf-8"><title>Страница не найдена</title><p>Страница не найдена. <a href="{B}/">На главную</a></p>')
-print("pages:", len(urls))
+L = [f"# {CFG['name']}", "", "> Удаление плесени на Бали: поиск причины сырости, очистка, антигрибковая обработка, защита и покраска. "
+     "Районы: " + ", ".join(d["ru"] for d in DISTRICTS) + ". Русский и английский. Бесплатная оценка по фото.", ""]
+for kind, head in [("home", "Главная"), ("service", "Услуги"), ("district", "Районы"), ("grid", "Плесень по районам и типам"), ("article", "Статьи"), ("hub", "Разделы"), ("page", "Прочее")]:
+    items = [m for m in PAGES_META if m[3] == kind]
+    if items:
+        L += [f"## {head}", ""] + [f"- [{t}]({u}): {d_}" for u, t, d_, _ in items] + [""]
+open(os.path.join(OUT, "llms.txt"), "w", encoding="utf-8").write("\n".join(L))
+print("pages:", len(PAGES_META))

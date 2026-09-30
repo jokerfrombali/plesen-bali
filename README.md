@@ -1,9 +1,11 @@
-# Маляр в Сануре
+# Антиплесень · Бали
 
-Статический сайт мастера малярных работ в Сануре (Бали) для GitHub Pages (папка `docs/`).
+Сайт «Удаление плесени на Бали» (основное) + малярные работы (вторично). GitHub Pages из папки `docs/`.
 
-- `site_config.json` — имя, WhatsApp, Telegram, телефон, ссылка на Google Business Profile.
-- `build_site.py` — генерирует `docs/` из SEO-книги (книга хранится локально, в репозиторий не входит).
-- `build_core.py`, `collect_suggest.py` — сбор семантического ядра и подсказок Google.
+- `site_config.json` — название, контакты, обещания, цены, данные мастера.
+- `mold_data.py` — услуги, районы, статьи; `districts.py` — данные районов.
+- `build_site.py` — генерирует `docs/`.
+- `collect_mold.py` → `build_mold_core.py` — ядро по плесени из подсказок Google (книга Excel локально, в репозиторий не входит).
+- `build_site_malyar.py`, `build_core.py`, `collect_suggest.py` — прошлая версия «Маляр на Бали».
 
-Пересборка: `python build_core.py && python build_site.py`.
+Пересборка: `python build_site.py`.

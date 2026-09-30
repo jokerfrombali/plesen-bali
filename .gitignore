@@ -4,3 +4,4 @@ suggest_log.txt
 __pycache__/
 img_src/*.jpg
 .claude/
+mold_log.txt
